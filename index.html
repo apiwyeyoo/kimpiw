@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>quotes wheel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;1,300&family=Playfair+Display:ital@0;1&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #000000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            min-height: 100dvh;
+            font-family: 'Cormorant Garamond', 'Playfair Display', serif;
+            -webkit-tap-highlight-color: transparent;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .wheel-wrapper {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .wheel-perspective {
+            perspective: 600px;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .wheel-3d {
+            position: relative;
+            width: 100%;
+            height: 60px;
+            transform-style: preserve-3d;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .wheel-item {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            padding: 0 2rem;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            will-change: transform, opacity;
+            transform-origin: center center;
+        }
+
+        .quote-text {
+            font-family: 'Cormorant Garamond', 'Playfair Display', serif;
+            font-weight: 300;
+            font-style: italic;
+            font-size: 1.1rem;
+            line-height: 1.5;
+            letter-spacing: 0.06em;
+            color: #ffffff;
+            word-break: break-word;
+            text-rendering: optimizeLegibility;
+            max-width: 280px;
+        }
+
+        @media (max-width: 360px) {
+            .quote-text {
+                font-size: 0.95rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="wheel-wrapper" id="wheelWrapper">
+        <div class="wheel-perspective">
+            <div class="wheel-3d" id="wheel3D"></div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            const quotes = [
+                "stillness speaks.",
+                "less, but better.",
+                "breathe deeply.",
+                "quiet chaos.",
+                "light through cracks.",
+                "slow mornings.",
+                "gentle courage.",
+                "softly strong.",
+                "here now.",
+                "enough."
+            ];
+
+            const totalItems = quotes.length;
+            const wheel3D = document.getElementById('wheel3D');
+            const wheelWrapper = document.getElementById('wheelWrapper');
+            const radius = 100;
+            const angleStep = (2 * Math.PI) / totalItems;
+
+            let currentAngle = 0;
+            let velocity = 0;
+            let isDragging = false;
+            let lastY = 0;
+            let lastTime = 0;
+            let animationId = null;
+            let snapTimer = null;
+
+            function buildWheel() {
+                wheel3D.innerHTML = '';
+
+                for (let i = 0; i < totalItems; i++) {
+                    const angle = i * angleStep;
+
+                    const item = document.createElement('div');
+                    item.className = 'wheel-item';
+                    item.innerHTML = `<p class="quote-text">${quotes[i]}</p>`;
+
+                    const y = Math.sin(angle) * radius;
+                    const z = Math.cos(angle) * radius;
+
+                    item.style.transform = `translateY(${y}px) translateZ(${z}px) rotateX(${-angle}rad)`;
+                    wheel3D.appendChild(item);
+                }
+            }
+
+            function updateWheel() {
+                wheel3D.style.transform = `rotateX(${currentAngle}rad)`;
+                updateOpacities();
+            }
+
+            function updateOpacities() {
+                const items = wheel3D.querySelectorAll('.wheel-item');
+                const angleStepLocal = (2 * Math.PI) / totalItems;
+                const maxDist = Math.PI / 3;
+
+                items.forEach((item, index) => {
+                    const itemAngle = index * angleStepLocal;
+                    let normalizedCurrent = currentAngle % (2 * Math.PI);
+                    if (normalizedCurrent < 0) normalizedCurrent += 2 * Math.PI;
+
+                    let diff = itemAngle - normalizedCurrent;
+                    if (diff > Math.PI) diff -= 2 * Math.PI;
+                    if (diff < -Math.PI) diff += 2 * Math.PI;
+
+                    const absDiff = Math.abs(diff);
+                    let opacity = 1 - (absDiff / maxDist);
+                    opacity = Math.max(0.12, Math.min(1, opacity));
+
+                    const quoteText = item.querySelector('.quote-text');
+                    if (quoteText) {
+                        quoteText.style.opacity = opacity;
+                    }
+                });
+            }
+
+            function getSnapAngle(angle) {
+                let normalized = angle % (2 * Math.PI);
+                if (normalized < 0) normalized += 2 * Math.PI;
+
+                const index = Math.round(normalized / angleStep);
+                const baseAngle = index * angleStep;
+                const fullRotations = Math.floor(angle / (2 * Math.PI)) * (2 * Math.PI);
+                return fullRotations + baseAngle;
+            }
+
+            function snapToNearest() {
+                const target = getSnapAngle(currentAngle);
+                const startAngle = currentAngle;
+                const startTime = Date.now();
+                const duration = 350;
+
+                function snapStep() {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    const eased = 1 - Math.pow(1 - progress, 3);
+
+                    currentAngle = startAngle + (target - startAngle) * eased;
+                    updateWheel();
+
+                    if (progress < 1) {
+                        requestAnimationFrame(snapStep);
+                    } else {
+                        currentAngle = target;
+                        updateWheel();
+                    }
+                }
+
+                snapStep();
+            }
+
+            function animate() {
+                if (!isDragging) {
+                    if (Math.abs(velocity) > 0.0003) {
+                        currentAngle += velocity;
+                        velocity *= 0.965;
+                        updateWheel();
+
+                        if (Math.abs(velocity) < 0.0008 && !snapTimer) {
+                            snapTimer = setTimeout(() => {
+                                if (!isDragging && Math.abs(velocity) < 0.001) {
+                                    velocity = 0;
+                                    snapToNearest();
+                                }
+                                snapTimer = null;
+                            }, 300);
+                        }
+                    }
+                }
+
+                animationId = requestAnimationFrame(animate);
+            }
+
+            function onPointerDown(e) {
+                isDragging = true;
+                velocity = 0;
+                lastY = e.clientY || (e.touches && e.touches[0].clientY);
+                lastTime = Date.now();
+
+                if (snapTimer) {
+                    clearTimeout(snapTimer);
+                    snapTimer = null;
+                }
+            }
+
+            function onPointerMove(e) {
+                if (!isDragging) return;
+
+                const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+                const now = Date.now();
+                const deltaY = lastY - clientY;
+                const deltaTime = Math.max(now - lastTime, 1);
+
+                if (Math.abs(deltaY) > 0.2) {
+                    const sensitivity = 0.005;
+                    currentAngle += deltaY * sensitivity;
+                    velocity = (deltaY * sensitivity) / (deltaTime / 16);
+                    updateWheel();
+                }
+
+                lastY = clientY;
+                lastTime = now;
+            }
+
+            function onPointerUp() {
+                isDragging = false;
+
+                if (Math.abs(velocity) < 0.0008) {
+                    velocity = 0;
+                    snapToNearest();
+                } else {
+                    snapTimer = setTimeout(() => {
+                        if (!isDragging && Math.abs(velocity) < 0.001) {
+                            velocity = 0;
+                            snapToNearest();
+                        }
+                        snapTimer = null;
+                    }, 400);
+                }
+            }
+
+            wheelWrapper.addEventListener('pointerdown', onPointerDown, { passive: false });
+            wheelWrapper.addEventListener('pointermove', onPointerMove, { passive: false });
+            wheelWrapper.addEventListener('pointerup', onPointerUp);
+            wheelWrapper.addEventListener('pointerleave', onPointerUp);
+            wheelWrapper.addEventListener('pointercancel', onPointerUp);
+
+            wheelWrapper.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                onPointerDown(e);
+            }, { passive: false });
+
+            wheelWrapper.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                onPointerMove(e);
+            }, { passive: false });
+
+            wheelWrapper.addEventListener('touchend', onPointerUp);
+
+            wheelWrapper.addEventListener('wheel', (e) => {
+                e.preventDefault();
+
+                if (snapTimer) {
+                    clearTimeout(snapTimer);
+                    snapTimer = null;
+                }
+
+                const sensitivity = 0.003;
+                currentAngle += -e.deltaY * sensitivity;
+                velocity += -e.deltaY * sensitivity * 0.6;
+
+                const maxVel = 0.12;
+                if (Math.abs(velocity) > maxVel) {
+                    velocity = Math.sign(velocity) * maxVel;
+                }
+
+                updateWheel();
+
+                snapTimer = setTimeout(() => {
+                    if (!isDragging && Math.abs(velocity) < 0.001) {
+                        velocity = 0;
+                        snapToNearest();
+                    }
+                    snapTimer = null;
+                }, 450);
+            }, { passive: false });
+
+            buildWheel();
+            updateWheel();
+            animate();
+            snapToNearest();
+        })();
+    </script>
+</body>
+</html>
